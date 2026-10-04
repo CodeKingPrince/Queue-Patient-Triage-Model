@@ -106,63 +106,147 @@ def detect_severity(symptoms):
         return "UNKNOWN"
 
 
+def extract_context(patient):
+
+    symptoms_text = normalize_symptoms(patient["symptoms"]).lower()
+
+    severity = detect_severity(symptoms_text)
+
+    context = {
+        "severity": severity,
+        "duration": "UNKNOWN",
+        "age": patient["age"],
+        "associated_symptoms": []
+    }
+
+    # Duration detection
+    duration_keywords = [
+        "today",
+        "yesterday",
+        "2 days",
+        "3 days",
+        "4 days",
+        "5 days",
+        "one week",
+        "1 week",
+        "two weeks",
+        "2 weeks"
+    ]
+
+    for duration in duration_keywords:
+        if duration in symptoms_text:
+            context["duration"] = duration
+            break
+
+    # Associated symptoms
+    possible_associated_symptoms = [
+        "chest pain",
+        "difficulty breathing",
+        "vomiting",
+        "diarrhea",
+        "headache",
+        "weakness",
+        "dizziness",
+        "cough",
+        "abdominal pain"
+    ]
+
+    for symptom in possible_associated_symptoms:
+        if symptom in symptoms_text:
+            context["associated_symptoms"].append(symptom)
+
+    return context
 # ============================================================
 # 4. TRIAGE ENGINE
 # ============================================================
 
+# def triage_patient(patient):
+
+#     symptoms = normalize_symptoms(
+#         patient["symptoms"]
+#     )
+
+#     severity = detect_severity(symptoms)
+
+#     # --------------------------------------------------------
+#     # EMERGENCY RULES
+#     # These rules have the highest priority.
+#     # --------------------------------------------------------
+
+#     emergency_keywords = [
+
+#         "chest pain",
+#         "difficulty breathing",
+#         "severe bleeding",
+#         "loss of consciousness",
+#         "major trauma",
+#         "major injury"
+#     ]
+
+#     for keyword in emergency_keywords:
+
+#         if keyword in symptoms:
+#             return "EMERGENCY"
+
+
+#     # --------------------------------------------------------
+#     # URGENT RULES
+#     # --------------------------------------------------------
+
+#     urgent_keywords = [
+
+#         "high fever",
+#         "very high fever",
+#         "persistent vomiting",
+#         "severe abdominal pain"
+#     ]
+
+#     for keyword in urgent_keywords:
+
+#         if keyword in symptoms:
+#             return "URGENT"
+
+
+    # # --------------------------------------------------------
+    # # ROUTINE
+    # # --------------------------------------------------------
+
+    # return "ROUTINE"
 def triage_patient(patient):
 
-    symptoms = normalize_symptoms(
+    # Normalize input
+    normalized_symptoms = normalize_symptoms(
         patient["symptoms"]
     )
 
-    severity = detect_severity(symptoms)
+    # Extract symptoms
+    symptoms = extract_symptoms(
+        normalized_symptoms
+    )
 
-    # --------------------------------------------------------
-    # EMERGENCY RULES
-    # These rules have the highest priority.
-    # --------------------------------------------------------
+    # Extract context
+    context = extract_context(
+        patient
+    )
 
-    emergency_keywords = [
+    # Detect emergency red flags
+    red_flags = detect_red_flags(
+        symptoms
+    )
 
-        "chest pain",
-        "difficulty breathing",
-        "severe bleeding",
-        "loss of consciousness",
-        "major trauma",
-        "major injury"
-    ]
+    # Make final triage decision
+    priority = make_triage_decision(
+        symptoms,
+        context,
+        red_flags
+    )
 
-    for keyword in emergency_keywords:
-
-        if keyword in symptoms:
-            return "EMERGENCY"
-
-
-    # --------------------------------------------------------
-    # URGENT RULES
-    # --------------------------------------------------------
-
-    urgent_keywords = [
-
-        "high fever",
-        "very high fever",
-        "persistent vomiting",
-        "severe abdominal pain"
-    ]
-
-    for keyword in urgent_keywords:
-
-        if keyword in symptoms:
-            return "URGENT"
-
-
-    # --------------------------------------------------------
-    # ROUTINE
-    # --------------------------------------------------------
-
-    return "ROUTINE"
-
+    return {
+        "symptoms": symptoms,
+        "context": context,
+        "red_flags": red_flags,
+        "priority": priority
+    }
 
 # ============================================================
 # 5. KGMU DEPARTMENT ROUTER
@@ -466,55 +550,88 @@ def display_result(result):
 
 def main():
 
+    # --------------------------------------------------------
+    # 1. COLLECT PATIENT INFORMATION
+    # --------------------------------------------------------
+
     patient = collect_patient()
 
 
-    # Normalize symptoms
-    normalized_symptoms = normalize_symptoms(
-        patient["symptoms"]
-    )
+    # --------------------------------------------------------
+    # 2. RUN TRIAGE ENGINE
+    # --------------------------------------------------------
 
-
-    # Detect severity
-    severity = detect_severity(
-        normalized_symptoms
-    )
-
-
-    # Triage
-    priority = triage_patient(
+    triage_result = triage_patient(
         patient
     )
 
 
-    # Department
+    # --------------------------------------------------------
+    # 3. GET TRIAGE INFORMATION
+    # --------------------------------------------------------
+
+    priority = triage_result["priority"]
+
+    context = triage_result["context"]
+
+    red_flags = triage_result["red_flags"]
+
+    symptoms = triage_result["symptoms"]
+
+
+    # --------------------------------------------------------
+    # 4. ROUTE TO DEPARTMENT
+    # --------------------------------------------------------
+
     department = route_department(
         patient
     )
 
 
-    # Message
+    # --------------------------------------------------------
+    # 5. GENERATE PATIENT MESSAGE
+    # --------------------------------------------------------
+
     message = generate_message(
         priority
     )
 
 
-    # Final result
+    # --------------------------------------------------------
+    # 6. CREATE FINAL RESULT
+    # --------------------------------------------------------
+
     result = {
 
-        "symptoms": normalized_symptoms,
+        "symptoms": symptoms,
 
-        "severity": severity,
+        "severity": context["severity"],
 
         "priority": priority,
 
         "department": department,
 
+        "red_flags": red_flags,
+
         "message": message
     }
 
 
-    display_result(result)
+    # --------------------------------------------------------
+    # 7. DISPLAY RESULT
+    # --------------------------------------------------------
+
+    display_result(
+        result
+    )
+
+
+# ============================================================
+# PROGRAM START
+# ============================================================
+
+if __name__ == "__main__":
+    main()
 
 
 # ============================================================
@@ -524,4 +641,7 @@ def main():
 if __name__ == "__main__":
 
     main()
-    # / python .\Phase1\main.py
+    # /
+    # python .
+    # \Phase1\main1.py
+    # python .\Phase1\main1.py
