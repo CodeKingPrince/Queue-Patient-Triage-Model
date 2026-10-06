@@ -642,6 +642,5 @@ if __name__ == "__main__":
 
     main()
     # /
-    # python .
-    # \Phase1\main1.py
     # python .\Phase1\main1.py
+    #ñ

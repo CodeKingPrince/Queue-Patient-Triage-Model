@@ -269,6 +269,16 @@ def extract_symptoms(symptoms):
         "fracture",
         "joint pain",
         "back pain",
+        "shoulder pain",
+        "neck pain",
+        "leg pain",
+        "arm pain",
+        "foot pain",
+        "ankle pain",
+        "knee pain",
+        "elbow pain",
+        "wrist pain",
+        "hip pain",
         "accident",
         "trauma",
 
@@ -301,6 +311,23 @@ def extract_symptoms(symptoms):
             detected_symptoms.append(
                 symptom
             )
+
+    # --------------------------------------------------------
+    # Remove generic "pain" when a more specific pain location
+    # or pain type has already been identified.
+    # --------------------------------------------------------
+
+    if "pain" in detected_symptoms:
+        specific_pain_symptoms = [
+            item for item in detected_symptoms
+            if item != "pain" and "pain" in item
+        ]
+
+        if specific_pain_symptoms:
+            detected_symptoms = [
+                item for item in detected_symptoms
+                if item != "pain"
+            ]
 
     # --------------------------------------------------------
     # If nothing was identified
@@ -630,10 +657,7 @@ def generate_follow_up_question(
     red_flags
 ):
 
-    # --------------------------------------------------------
-    # 1. SAFETY INFORMATION
-    # --------------------------------------------------------
-
+    # 1. SAFETY
     if len(red_flags) > 0:
 
         return (
@@ -643,11 +667,7 @@ def generate_follow_up_question(
             "or another rapidly worsening symptom?"
         )
 
-
-    # --------------------------------------------------------
-    # 2. CHECK FOR UNSPECIFIED / UNKNOWN SYMPTOM
-    # --------------------------------------------------------
-
+    # 2. UNSPECIFIED SYMPTOM
     if (
         "unspecified symptom" in symptoms
         or len(symptoms) == 0
@@ -659,11 +679,7 @@ def generate_follow_up_question(
             "vomiting, injury, weakness, or another problem."
         )
 
-
-    # --------------------------------------------------------
-    # 3. PAIN WITHOUT A CLEAR LOCATION
-    # --------------------------------------------------------
-
+    # 3. PAIN WITHOUT CLEAR LOCATION
     if "pain" in symptoms:
 
         pain_locations = [
@@ -693,14 +709,10 @@ def generate_follow_up_question(
             return (
                 "Where exactly is the pain located? "
                 "For example: chest, stomach/abdomen, "
-                "head, back, joint, or another area."
+                "head, back, joint, bone, or another area."
             )
 
-
-    # --------------------------------------------------------
     # 4. UNKNOWN SEVERITY
-    # --------------------------------------------------------
-
     if context.get("severity") == "UNKNOWN":
 
         return (
@@ -708,22 +720,14 @@ def generate_follow_up_question(
             "Please choose Mild, Moderate, or Severe."
         )
 
-
-    # --------------------------------------------------------
     # 5. UNKNOWN DURATION
-    # --------------------------------------------------------
-
     if context.get("duration") == "UNKNOWN":
 
         return (
             "How long have you had these symptoms?"
         )
 
-
-    # --------------------------------------------------------
-    # 6. NO FOLLOW-UP QUESTION REQUIRED
-    # --------------------------------------------------------
-
+    # 6. NONE
     return None
 # ============================================================
 # 9. COLLECT FOLLOW-UP RESPONSE
@@ -804,8 +808,6 @@ def triage_patient(patient):
 
         "priority": priority
     }
-
-
 def update_patient_from_follow_up(patient, answer):
 
     answer = answer.lower().strip()
@@ -820,7 +822,17 @@ def update_patient_from_follow_up(patient, answer):
         "head": "headache",
         "back": "back pain",
         "joint": "joint pain",
-        "bone": "bone pain"
+        "bone": "bone pain",
+        "shoulder": "shoulder pain",
+        "neck": "neck pain",
+        "leg": "leg pain",
+        "arm": "arm pain",
+        "foot": "foot pain",
+        "ankle": "ankle pain",
+        "knee": "knee pain",
+        "elbow": "elbow pain",
+        "wrist": "wrist pain",
+        "hip": "hip pain"
     }
 
     # If the original complaint was pain,
@@ -832,6 +844,22 @@ def update_patient_from_follow_up(patient, answer):
             patient["symptoms"] = pain_locations[answer]
 
     return patient
+
+
+
+def is_unspecified_pain_location(answer):
+
+    answer = answer.lower().strip()
+
+    unspecified_locations = [
+        "another area",
+        "other area",
+        "somewhere else",
+        "other",
+        "elsewhere"
+    ]
+
+    return answer in unspecified_locations
 
 def make_triage_decision(
     symptoms,
@@ -1067,12 +1095,22 @@ def route_department(patient, priority):
             "respiratory problem"
         ],
 
-        "Orthopedic Surgery": [
-            "bone pain",
-            "fracture",
-            "joint pain",
-            "back pain"
-        ],
+       "Orthopedic Surgery": [
+    "bone pain",
+    "fracture",
+    "joint pain",
+    "back pain",
+    "shoulder pain",
+    "neck pain",
+    "leg pain",
+    "arm pain",
+    "foot pain",
+    "ankle pain",
+    "knee pain",
+    "elbow pain",
+    "wrist pain",
+    "hip pain"
+],
 
         "Trauma Surgery": [
             "accident",
@@ -1276,11 +1314,8 @@ def main():
     )
 
     priority = triage_result["priority"]
-
     context = triage_result["context"]
-
     red_flags = triage_result["red_flags"]
-
     symptoms = triage_result["symptoms"]
 
     # FOLLOW-UP QUESTION
@@ -1299,23 +1334,38 @@ def main():
                 follow_up_question
             )
 
+            # Check if patient did not specify exact pain location
+            if is_unspecified_pain_location(answer):
+
+                second_question = (
+                    "Please tell me the specific area where "
+                    "you are experiencing the pain. "
+                    "For example: shoulder, neck, leg, arm, "
+                    "foot, or another specific body area."
+                )
+
+                answer = collect_follow_up_response(
+                    second_question
+                )
+
             patient = update_patient_from_follow_up(
                 patient,
                 answer
             )
-              # Re-run triage with updated patient information
-    triage_result = triage_patient(
-        patient
-    )
+            print(
+            "DEBUG - Updated symptoms:",
+            patient["symptoms"]
+            )
 
-    priority = triage_result["priority"]
+            # Re-run triage with updated patient information
+            triage_result = triage_patient(
+                patient
+            )
 
-    context = triage_result["context"]
-
-    red_flags = triage_result["red_flags"]
-
-    symptoms = triage_result["symptoms"]
-
+            priority = triage_result["priority"]
+            context = triage_result["context"]
+            red_flags = triage_result["red_flags"]
+            symptoms = triage_result["symptoms"]
 
     # DEPARTMENT ROUTING
     department = route_department(
