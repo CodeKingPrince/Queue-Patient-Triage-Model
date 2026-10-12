@@ -13,7 +13,9 @@
 #       ↓
 # Triage Decision
 #       ↓
-# EMERGENCY / URGENT / ROUTINE
+# Emergency Safety Gate
+#       ├── EMERGENCY → Emergency & Trauma Centre; stop OPD flow
+#       └── NON-EMERGENCY
 #       ↓
 # Department Routing
 #       ↓
@@ -739,6 +741,8 @@ def collect_follow_up_response(question):
     print("=" * 50)
     print("          ADDITIONAL INFORMATION")
     print("=" * 50)
+    
+    
 
     print(question)
 
@@ -1301,6 +1305,75 @@ def display_result(result):
     print("=" * 50)
 
 
+def emergency_handoff(triage_result):
+
+    context = triage_result.get("context")
+    severity = (
+        context.get("severity", "UNKNOWN")
+        if isinstance(context, dict)
+        else "UNKNOWN"
+    )
+
+    return {
+        "pathway": "EMERGENCY",
+        "destination": (
+            "KGMU Emergency & Trauma Centre - Emergency/Casualty"
+        ),
+        "clinical_triage": "Doctor / emergency clinical team",
+        "emergency_priority": "RED / YELLOW / GREEN",
+        "severity": severity,
+        "queue_required": False,
+        "wait_time_estimation": False
+    }
+def emergency_handoff(triage_result):
+
+    context = triage_result.get("context", {})
+
+    severity = context.get(
+        "severity",
+        "UNKNOWN"
+    ).upper()
+
+    response = {
+
+        "pathway": "EMERGENCY",
+
+        "destination":
+            "KGMU Emergency & Trauma Centre - Emergency/Casualty",
+
+        "priority":
+            triage_result.get("priority", "UNKNOWN"),
+
+        "severity":
+            severity,
+
+        "clinical_triage":
+            "Doctor / emergency clinical team",
+
+        "emergency_priority":
+            "RED / YELLOW / GREEN",
+
+        "queue_required":
+            False,
+
+        "wait_time_estimation":
+            False
+    }
+
+    return response
+
+def safety_gate(triage_result):
+
+    if triage_result.get("priority") == "EMERGENCY":
+        return emergency_handoff(triage_result)
+
+    return {
+        "pathway": "OPD",
+        "queue_required": True,
+        "wait_time_estimation": True
+    }
+
+
 # ============================================================
 # 12. MAIN PROGRAM
 # ============================================================
@@ -1366,6 +1439,30 @@ def main():
             context = triage_result["context"]
             red_flags = triage_result["red_flags"]
             symptoms = triage_result["symptoms"]
+
+    # SAFETY GATE: emergency patients leave the normal OPD flow
+    next_step = safety_gate(triage_result)
+
+      
+
+    if next_step["pathway"] == "EMERGENCY":
+
+        print("\n" + "=" * 55)
+        print("              EMERGENCY HANDOFF")
+        print("=" * 55)
+
+        print("Priority       :", next_step["priority"])
+        print("Severity       :", next_step["severity"])
+        print("Pathway        :", next_step["pathway"])
+        print("Destination    :", next_step["destination"])
+
+        print("\nClinical emergency triage:")
+        print(next_step["clinical_triage"])
+
+        print("\nEmergency priority:")
+        print(next_step["emergency_priority"])
+
+        return
 
     # DEPARTMENT ROUTING
     department = route_department(
