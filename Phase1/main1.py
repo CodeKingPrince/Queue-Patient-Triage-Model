@@ -28,7 +28,8 @@
 # ============================================================
 # 1. COLLECT PATIENT INFORMATION
 # ============================================================
-
+from datetime import datetime
+from uuid import uuid4
 def collect_patient():
 
     print("\n--- Patient Information ---")
@@ -742,7 +743,7 @@ def collect_follow_up_response(question):
     print("          ADDITIONAL INFORMATION")
     print("=" * 50)
     
-    
+
 
     print(question)
 
@@ -1377,9 +1378,589 @@ def safety_gate(triage_result):
 # ============================================================
 # 12. MAIN PROGRAM
 # ============================================================
+# ==========================================
+# ADD PATIENT TO OPD QUEUE
+# ==========================================
+
+# OPD QUEUE STORAGE
+QUEUE_PRIORITY_ORDER = {
+    "URGENT": 1,
+    "ROUTINE": 2
+}
+OPD_QUEUES = {}
+# ==========================================
+# OPD CONFIGURATION - DEMO VALUES ONLY
+# ==========================================
+
+# ==========================================
+# SUPPORTED OPD DEPARTMENTS
+# ==========================================
+
+OPD_DEPARTMENTS = [
+
+    "Cardiology",
+
+    "Dermatology, Venereology & Leprosy",
+
+    "Ophthalmology",
+
+    "Otorhinolaryngology & Head Neck Surgery",
+
+    "Neurology",
+
+    "Medical Gastroenterology",
+
+    "Urology",
+
+    "Nephrology",
+
+    "Obstetrics & Gynecology",
+
+    "Psychiatry",
+
+    "Respiratory Medicine",
+
+    "Orthopedic Surgery",
+
+    "Trauma Surgery",
+
+    "General Surgery",
+
+    "Endocrine Surgery",
+
+    "Plastic & Reconstructive Surgery",
+
+    "Medicine"
+]
+
+
+# ==========================================
+# OPD CONFIGURATION - DEMO VALUES
+# ==========================================
+
+# Default settings for prototype testing.
+OPD_CONFIG = {
+
+    department: {
+        "active_doctors": 2,
+        "average_consultation_minutes": 10,
+        "station_remaining_minutes": [10, 20]
+    }
+
+    for department in OPD_DEPARTMENTS
+}
+
+
+# Preserve our earlier custom test configurations.
+OPD_CONFIG.update({
+
+    "Dermatology, Venereology & Leprosy": {
+        "active_doctors": 3,
+        "average_consultation_minutes": 8,
+        "station_remaining_minutes": [10, 20, 30]
+    },
+
+    "Cardiology": {
+        "active_doctors": 2,
+        "average_consultation_minutes": 12,
+        "station_remaining_minutes": [5, 15]
+    }
+
+})
+# ==========================================
+# OPD CONFIGURATION VALIDATION
+# ==========================================
+
+def validate_opd_config():
+
+    missing_departments = []
+    invalid_configs = {}
+
+    for department in OPD_DEPARTMENTS:
+
+        config = OPD_CONFIG.get(department)
+
+        # Check missing configuration
+        if config is None:
+
+            missing_departments.append(department)
+            continue
+
+        problems = []
+
+        active_doctors = config.get("active_doctors")
+
+        average_minutes = config.get(
+            "average_consultation_minutes"
+        )
+
+        station_remaining = config.get(
+            "station_remaining_minutes"
+        )
+
+        # Check doctor count
+        if (
+            not isinstance(active_doctors, int)
+            or isinstance(active_doctors, bool)
+            or active_doctors <= 0
+        ):
+
+            problems.append("Invalid active doctor count")
+
+        # Check consultation time
+        if (
+            not isinstance(average_minutes, (int, float))
+            or isinstance(average_minutes, bool)
+            or average_minutes <= 0
+        ):
+
+            problems.append("Invalid consultation duration")
+
+        # Check station availability
+        if (
+            isinstance(active_doctors, int)
+            and not isinstance(active_doctors, bool)
+            and active_doctors > 0
+        ):
+
+            if (
+                not isinstance(station_remaining, list)
+                or len(station_remaining) != active_doctors
+            ):
+
+                problems.append("Station count mismatch")
+
+            elif any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or value < 0
+                for value in station_remaining
+            ):
+
+                problems.append("Invalid station availability")
+
+        if problems:
+
+            invalid_configs[department] = problems
+
+    return {
+
+        "valid": (
+            len(missing_departments) == 0
+            and len(invalid_configs) == 0
+        ),
+
+        "missing_departments": missing_departments,
+
+        "invalid_configs": invalid_configs,
+
+        "configured_count": len(OPD_CONFIG)
+    }
+
+def add_to_opd_queue(department, priority):
+
+    department = str(department).strip()
+    priority = str(priority).strip().upper()
+
+    # Never add emergency-priority patients to a normal OPD queue.
+    if priority == "EMERGENCY":
+        return {
+            "queued": False,
+            "reason": "EMERGENCY_HANDOFF_REQUIRED"
+        }
+
+    # Do not queue an unresolved department.
+    if department.upper() == "NEEDS_MORE_INFORMATION":
+        return {
+            "queued": False,
+            "reason": "MORE_INFORMATION_REQUIRED"
+        }
+
+    # Do not silently queue patients routed to Emergency Medicine.
+    if department.casefold() == "emergency medicine".casefold():
+        return {
+            "queued": False,
+            "reason": "EMERGENCY_DEPARTMENT_REVIEW_REQUIRED"
+        }
+
+    # Accept only the priorities configured for this prototype.
+    if priority not in QUEUE_PRIORITY_ORDER:
+        return {
+            "queued": False,
+            "reason": "UNSUPPORTED_PRIORITY"
+        }
+
+    # Create a queue for this department if it does not exist.
+    if department not in OPD_QUEUES:
+        OPD_QUEUES[department] = []
+
+    # Create a unique ticket.
+    ticket = {
+        "ticket_id": f"OPD-{uuid4().hex[:8].upper()}",
+        "department": department,
+        "priority": priority,
+        "arrival_time": datetime.now(),
+        "status": "WAITING"
+    }
+
+    # Register the patient.
+    OPD_QUEUES[department].append(ticket)
+
+    # Apply priority ordering; preserve arrival order for equal priorities.
+    OPD_QUEUES[department].sort(
+        key=lambda item: (
+            QUEUE_PRIORITY_ORDER[item["priority"]],
+            item["arrival_time"]
+        )
+    )
+
+    # Find the new patient's position.
+    position = next(
+        index
+        for index, item in enumerate(
+            OPD_QUEUES[department],
+            start=1
+        )
+        if item["ticket_id"] == ticket["ticket_id"]
+    )
+
+    return {
+        "queued": True,
+        "ticket": ticket,
+        "queue_position": position,
+        "patients_ahead": position - 1
+
+      
+    }
+
+def start_consultation(department, ticket_id):
+
+    config = OPD_CONFIG.get(department)
+
+    if config is None:
+        return {
+            "started": False,
+            "reason": "DEPARTMENT_CONFIG_MISSING"
+        }
+
+    active_doctors = config.get("active_doctors")
+
+    if (
+        not isinstance(active_doctors, int)
+        or isinstance(active_doctors, bool)
+        or active_doctors <= 0
+    ):
+        return {
+            "started": False,
+            "reason": "INVALID_ACTIVE_DOCTORS_CONFIG"
+        }
+
+    queue = OPD_QUEUES.get(department, [])
+    patient_index = next(
+        (
+            index
+            for index, patient in enumerate(queue)
+            if patient["ticket_id"] == ticket_id
+        ),
+        None
+    )
+
+    if patient_index is None:
+        return {
+            "started": False,
+            "reason": "PATIENT_NOT_FOUND"
+        }
+
+    patient = queue[patient_index]
+
+    if patient.get("status") != "WAITING":
+        return {
+            "started": False,
+            "reason": "PATIENT_NOT_WAITING"
+        }
+
+    if any(
+        patient_ahead.get("status") == "WAITING"
+        for patient_ahead in queue[:patient_index]
+    ):
+        return {
+            "started": False,
+            "reason": "PATIENTS_AHEAD_IN_QUEUE"
+        }
+
+    active_consultations = [
+        queued_patient
+        for queued_patient in queue
+        if queued_patient.get("status") == "IN_CONSULTATION"
+    ]
+
+    if len(active_consultations) >= active_doctors:
+        return {
+            "started": False,
+            "reason": "NO_AVAILABLE_CONSULTATION_STATION"
+        }
+
+    occupied_stations = {
+        queued_patient.get("consultation_station")
+        for queued_patient in active_consultations
+    }
+    station = next(
+        station_number
+        for station_number in range(1, active_doctors + 1)
+        if station_number not in occupied_stations
+    )
+
+    patient["status"] = "IN_CONSULTATION"
+    patient["consultation_station"] = station
+    patient["consultation_started_at"] = datetime.now()
+
+    return {
+        "started": True,
+        "department": department,
+        "ticket_id": ticket_id,
+        "consultation_station": station
+    }
+
+def complete_consultation(department, ticket_id):
+    queue = OPD_QUEUES.get(department, [])
+
+    # Find the patient
+    patient = next(
+        (
+            p for p in queue
+            if p["ticket_id"] == ticket_id
+        ),
+        None
+    )
+
+    if patient is None:
+        return {
+            "completed": False,
+            "reason": "PATIENT_NOT_FOUND"
+        }
+
+    # Patient must currently be in consultation
+    if patient.get("status") != "IN_CONSULTATION":
+        return {
+            "completed": False,
+            "reason": "PATIENT_NOT_IN_CONSULTATION"
+        }
+
+    # Check whether start time exists
+    started_at = patient.get("consultation_started_at")
+
+    if started_at is None:
+        return {
+            "completed": False,
+            "reason": "CONSULTATION_START_TIME_MISSING"
+        }
+
+    # Record completion time
+    completed_at = datetime.now()
+
+    # Calculate actual consultation duration
+    duration = (
+        completed_at - started_at
+    ).total_seconds() / 60
+
+    # Update patient record
+    patient["consultation_completed_at"] = completed_at
+    patient["consultation_duration_minutes"] = round(duration, 2)
+    patient["status"] = "COMPLETED"
+
+    # The station is now free because this patient
+    # is no longer counted as IN_CONSULTATION.
+    station = patient.get("consultation_station")
+
+    return {
+        "completed": True,
+        "department": department,
+        "ticket_id": ticket_id,
+        "consultation_station": station,
+        "consultation_duration_minutes": round(duration, 2)
+    }
+
+
+def calculate_actual_waiting_time(department, ticket_id):
+
+    queue = OPD_QUEUES.get(department, [])
+
+    patient = next(
+        (
+            p for p in queue
+            if p["ticket_id"] == ticket_id
+        ),
+        None
+    )
+
+    if patient is None:
+        return {
+            "available": False,
+            "reason": "PATIENT_NOT_FOUND"
+        }
+
+    arrival_time = patient.get("arrival_time")
+    started_at = patient.get("consultation_started_at")
+
+    if arrival_time is None:
+        return {
+            "available": False,
+            "reason": "ARRIVAL_TIME_MISSING"
+        }
+
+    if started_at is None:
+        return {
+            "available": False,
+            "reason": "CONSULTATION_NOT_STARTED"
+        }
+
+    actual_wait = (
+        started_at - arrival_time
+    ).total_seconds() / 60
+
+    return {
+        "available": True,
+        "department": department,
+        "ticket_id": ticket_id,
+        "actual_waiting_minutes": round(actual_wait, 2)
+    }
+
+# ==========================================
+# WAITING-TIME ESTIMATOR
+# ==========================================
+
+def estimate_wait_time(department, ticket_id):
+
+    # 1. Get department configuration
+    config = OPD_CONFIG.get(department)
+
+    if config is None:
+        return {
+            "available": False,
+            "reason": "DEPARTMENT_CONFIG_MISSING"
+        }
+
+    # 2. Get this department's queue
+    queue = OPD_QUEUES.get(department, [])
+
+    # 3. Find the patient's position
+    position = next(
+        (
+            index
+            for index, patient in enumerate(queue)
+            if patient["ticket_id"] == ticket_id
+        ),
+        None
+    )
+
+    if position is None:
+        return {
+            "available": False,
+            "reason": "PATIENT_NOT_FOUND"
+        }
+
+    current_patient = queue[position]
+
+    if current_patient.get("priority") not in QUEUE_PRIORITY_ORDER:
+        return {
+            "available": False,
+            "reason": "PATIENT_NOT_ELIGIBLE_FOR_OPD_ESTIMATE"
+        }
+
+    if current_patient.get("status") != "WAITING":
+        return {
+            "available": False,
+            "reason": "PATIENT_NOT_WAITING"
+        }
+
+    # 4. Read the department's settings
+    active_doctors = config.get("active_doctors")
+    average_minutes = config.get(
+        "average_consultation_minutes"
+    )
+    station_remaining = config.get(
+        "station_remaining_minutes"
+    )
+
+    # 5. Validate the configuration
+    if (
+        not isinstance(active_doctors, int)
+        or isinstance(active_doctors, bool)
+        or active_doctors <= 0
+    ):
+        return {
+            "available": False,
+            "reason": "INVALID_ACTIVE_DOCTORS_CONFIG"
+        }
+
+    if (
+        not isinstance(average_minutes, (int, float))
+        or isinstance(average_minutes, bool)
+        or average_minutes <= 0
+    ):
+        return {
+            "available": False,
+            "reason": "INVALID_CONSULTATION_TIME_CONFIG"
+        }
+
+    if (
+        not isinstance(station_remaining, list)
+        or len(station_remaining) != active_doctors
+        or any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or value < 0
+            for value in station_remaining
+        )
+    ):
+        return {
+            "available": False,
+            "reason": "INVALID_STATION_AVAILABILITY_CONFIG"
+        }
+
+    # 6. Each value represents when a station
+    #    is expected to become available.
+    station_available = [
+        float(value)
+        for value in station_remaining
+    ]
+
+    # 7. Simulate patients ahead of this patient.
+    patients_ahead = queue[:position]
+
+    for patient in patients_ahead:
+
+        # Only count patients still waiting.
+        if patient.get("status") != "WAITING":
+            continue
+
+        # Assign the next patient to the station
+        # expected to become available first.
+        next_station = min(
+            range(len(station_available)),
+            key=lambda index: station_available[index]
+        )
+
+        station_available[next_station] += average_minutes
+
+    # 8. Earliest station availability is our
+    #    estimated time until consultation can start.
+    estimated_minutes = min(station_available)
+
+    return {
+        "available": True,
+        "department": department,
+        "ticket_id": ticket_id,
+        "queue_position": position + 1,
+        "patients_ahead": len(patients_ahead),
+        "estimated_wait_minutes": round(
+            estimated_minutes,
+            1
+        ),
+        "estimate_type": "DEMO_SIMULATION"
+    }
 
 def main():
-
     patient = collect_patient()
 
     triage_result = triage_patient(
@@ -1469,7 +2050,69 @@ def main():
         patient,
         priority
     )
+    # ==========================================
+    # OPD QUEUE REGISTRATION + WAIT ESTIMATION
+    # ==========================================
 
+    queue_result = add_to_opd_queue(
+        department,
+        priority
+    )
+
+    print("\n" + "=" * 55)
+    print("          OPD QUEUE / WAIT-TIME ESTIMATE")
+    print("=" * 55)
+
+    if queue_result["queued"]:
+
+        ticket = queue_result["ticket"]
+
+        # Calculate waiting time
+        wait_result = estimate_wait_time(
+            department,
+            ticket["ticket_id"]
+        )
+
+        print("Ticket ID       :", ticket["ticket_id"])
+        print("Department      :", department)
+        print("Priority        :", priority)
+
+        print(
+            "Queue Position  :",
+            queue_result["queue_position"]
+        )
+
+        print(
+            "Patients Ahead  :",
+            queue_result["patients_ahead"]
+        )
+
+        if wait_result["available"]:
+
+            print(
+                "Estimated Wait  :",
+                wait_result["estimated_wait_minutes"],
+                "minutes"
+            )
+
+            print(
+                "Estimate Type   :",
+                wait_result["estimate_type"]
+            )
+
+            print(
+                "Note            : Demo estimate, not live KGMU data."
+            )
+
+        else:
+
+            print("Estimated Wait  : Not available")
+            print("Reason          :", wait_result["reason"])
+
+    else:
+
+        print("Queue Status    : Not added to normal OPD queue")
+        print("Reason          :", queue_result["reason"])
     # MESSAGE
     message = generate_message(
         priority
